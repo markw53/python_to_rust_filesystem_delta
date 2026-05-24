@@ -1,0 +1,403 @@
+import os
+import json
+import subprocess
+import stat
+from pathlib import Path
+
+import pytest
+
+TIMEOUT = 30
+BIN = os.environ.get("FILESYSTEM_DELTA_BIN", "/target/filesystem-delta")
+
+
+def run_compute(src, dst, out):
+    return subprocess.run(
+        [BIN, "compute", "--src", str(src), "--dst", str(dst), "--out", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+    )
+
+
+def run_apply(root, patch, dry_run=False):
+    cmd = [BIN, "apply", "--root", str(root), "--patch", str(patch)]
+    if dry_run:
+        cmd.append("--dry-run")
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+    )
+
+
+def compute_and_load(src, dst, tmp_path):
+    patch = tmp_path / "patch.json"
+    result = run_compute(src, dst, patch)
+    assert result.returncode == 0, result.stderr
+    return json.loads(patch.read_text())
+
+
+class TestComputeSubcommand:
+    def test_compute_creates_patch_file(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        patch = tmp_path / "patch.json"
+
+        result = run_compute(src, dst, patch)
+        assert result.returncode == 0
+        assert patch.exists()
+
+    def test_compute_create_file_op(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "a.txt").write_text("hello")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "create_file" and o["path"] == "a.txt" for o in ops)
+
+    def test_compute_delete_file_op(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a.txt").write_text("hello")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "delete_file" and o["path"] == "a.txt" for o in ops)
+
+    def test_compute_modify_file_op(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a.txt").write_text("hello")
+        (dst / "a.txt").write_text("world")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "modify_file" and o["path"] == "a.txt" for o in ops)
+
+    def test_compute_chmod_op(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a.txt").write_text("x")
+        (dst / "a.txt").write_text("x")
+        os.chmod(src / "a.txt", 0o644)
+        os.chmod(dst / "a.txt", 0o600)
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "chmod" and o["path"] == "a.txt" for o in ops)
+
+    def test_compute_utimes_op(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a.txt").write_text("x")
+        (dst / "a.txt").write_text("x")
+        os.utime(src / "a.txt", (100000, 100000))
+        os.utime(dst / "a.txt", (200000, 200000))
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "utimes" and o["path"] == "a.txt" for o in ops)
+
+    def test_compute_nested_create_ordering(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "a").mkdir()
+        (dst / "a" / "b").mkdir()
+        (dst / "a" / "b" / "c.txt").write_text("x")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        paths = [o["path"] for o in ops]
+        assert paths.index("a") < paths.index("a/b")
+        assert paths.index("a/b") < paths.index("a/b/c.txt")
+
+    def test_compute_nested_delete_ordering(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a").mkdir()
+        (src / "a" / "b").mkdir()
+        (src / "a" / "b" / "c.txt").write_text("x")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        paths = [o["path"] for o in ops]
+        assert paths.index("a/b/c.txt") < paths.index("a/b")
+        assert paths.index("a/b") < paths.index("a")
+
+    def test_compute_deterministic(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "a.txt").write_text("hello")
+        (dst / "b.txt").write_text("world")
+
+        ops1 = compute_and_load(src, dst, tmp_path)
+        patch2 = tmp_path / "patch2.json"
+        result = run_compute(src, dst, patch2)
+        assert result.returncode == 0
+        ops2 = json.loads(patch2.read_text())
+
+        assert [o["op"] for o in ops1] == [o["op"] for o in ops2]
+        assert [o["path"] for o in ops1] == [o["path"] for o in ops2]
+
+    def test_compute_symlink_op(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "real.txt").write_text("x")
+        (dst / "link").symlink_to("real.txt")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "symlink" and o["path"] == "link" for o in ops)
+
+    def test_compute_symlink_delete(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "real.txt").write_text("x")
+        (src / "link").symlink_to("real.txt")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "delete_file" and o["path"] == "link" for o in ops)
+
+    def test_compute_symlink_target_change(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a.txt").write_text("x")
+        (dst / "b.txt").write_text("y")
+        (src / "link").symlink_to("a.txt")
+        (dst / "link").symlink_to("b.txt")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(
+            o["op"] == "symlink" and o["path"] == "link" and o.get("target") == "b.txt"
+            for o in ops
+        )
+
+    def test_compute_type_change_file_to_dir(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "x").write_text("hello")
+        (dst / "x").mkdir()
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "delete_file" and o["path"] == "x" for o in ops)
+        assert any(o["op"] == "create_dir" and o["path"] == "x" for o in ops)
+
+    def test_compute_type_change_dir_to_file(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "x").mkdir()
+        (dst / "x").write_text("hello")
+
+        ops = compute_and_load(src, dst, tmp_path)
+        assert any(o["op"] == "delete_dir" and o["path"] == "x" for o in ops)
+        assert any(o["op"] == "create_file" and o["path"] == "x" for o in ops)
+
+
+class TestApplySubcommand:
+    def test_apply_create_file(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "create_file", "path": "a.txt"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert (root / "a.txt").exists()
+        assert (root / "a.txt").is_file()
+
+    def test_apply_delete_file(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "a.txt").write_text("x")
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "delete_file", "path": "a.txt"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert not (root / "a.txt").exists()
+
+    def test_apply_create_dir(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "create_dir", "path": "d"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert (root / "d").is_dir()
+
+    def test_apply_delete_dir(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "d").mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "delete_dir", "path": "d"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert not (root / "d").exists()
+
+    def test_apply_modify_file_truncates(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "a.txt").write_text("hello")
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "modify_file", "path": "a.txt"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert (root / "a.txt").read_text() == ""
+
+    def test_apply_chmod(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "a.txt").write_text("x")
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "chmod", "path": "a.txt", "mode": 0o600}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert (stat.S_IMODE(os.stat(root / "a.txt").st_mode)) == 0o600
+
+    def test_apply_symlink(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "symlink", "path": "link", "target": "real.txt"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert (root / "link").is_symlink()
+        assert os.readlink(root / "link") == "real.txt"
+
+    def test_apply_dry_run(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "create_file", "path": "a.txt"}]))
+
+        result = run_apply(root, patch, dry_run=True)
+        assert result.returncode == 0
+        assert not (root / "a.txt").exists()
+
+    def test_apply_idempotent_delete_file(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([{"op": "delete_file", "path": "ghost.txt"}]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert not (root / "ghost.txt").exists()
+
+    def test_apply_symlink_loop(self, tmp_path):
+        root = tmp_path / "root"
+        root.mkdir()
+        patch = tmp_path / "patch.json"
+        patch.write_text(json.dumps([
+            {"op": "symlink", "path": "a", "target": "b"},
+            {"op": "symlink", "path": "b", "target": "a"},
+        ]))
+
+        result = run_apply(root, patch)
+        assert result.returncode == 0
+        assert (root / "a").is_symlink()
+        assert (root / "b").is_symlink()
+
+
+class TestRoundtrip:
+    def test_roundtrip_simple(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "a.txt").write_text("hello")
+
+        patch = tmp_path / "patch.json"
+        run_compute(src, dst, patch)
+        run_apply(src, patch)
+
+        assert (src / "a.txt").exists()
+
+    def test_roundtrip_nested(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "a").mkdir()
+        (dst / "a" / "b").mkdir()
+        (dst / "a" / "b" / "c.txt").write_text("x")
+
+        patch = tmp_path / "patch.json"
+        run_compute(src, dst, patch)
+        run_apply(src, patch)
+
+        assert (src / "a" / "b" / "c.txt").exists()
+
+    def test_roundtrip_idempotent(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "a.txt").write_text("hello")
+
+        patch = tmp_path / "patch.json"
+        run_compute(src, dst, patch)
+        run_apply(src, patch)
+
+        patch2 = tmp_path / "patch2.json"
+        run_compute(src, dst, patch2)
+        ops = json.loads(patch2.read_text())
+        assert ops == []
+
+    def test_roundtrip_symlink(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (dst / "real.txt").write_text("x")
+        (dst / "link").symlink_to("real.txt")
+
+        patch = tmp_path / "patch.json"
+        run_compute(src, dst, patch)
+        run_apply(src, patch)
+
+        assert (src / "link").is_symlink()
+        assert os.readlink(src / "link") == "real.txt"
+
+    def test_roundtrip_modify(self, tmp_path):
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "a.txt").write_text("hello")
+        (dst / "a.txt").write_text("world")
+
+        patch = tmp_path / "patch.json"
+        run_compute(src, dst, patch)
+        run_apply(src, patch)
+
+        assert (src / "a.txt").exists()
+        assert (src / "a.txt").read_text() == ""

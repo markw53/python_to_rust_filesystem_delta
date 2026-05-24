@@ -1,6 +1,6 @@
 diff --git a/tests/test_behavioral.py b/tests/test_behavioral.py
 new file mode 100644
-index 0000000..68af6f3
+index 0000000..bb098b5
 --- /dev/null
 +++ b/tests/test_behavioral.py
 @@ -0,0 +1,403 @@
@@ -342,7 +342,7 @@ index 0000000..68af6f3
 +        (dst / "a.txt").write_text("hello")
 +
 +        patch = tmp_path / "patch.json"
-+        run_compute(dst, src, patch)
++        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
 +        assert (src / "a.txt").exists()
@@ -357,7 +357,7 @@ index 0000000..68af6f3
 +        (dst / "a" / "b" / "c.txt").write_text("x")
 +
 +        patch = tmp_path / "patch.json"
-+        run_compute(dst, src, patch)
++        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
 +        assert (src / "a" / "b" / "c.txt").exists()
@@ -370,11 +370,11 @@ index 0000000..68af6f3
 +        (dst / "a.txt").write_text("hello")
 +
 +        patch = tmp_path / "patch.json"
-+        run_compute(dst, src, patch)
++        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
 +        patch2 = tmp_path / "patch2.json"
-+        run_compute(dst, src, patch2)
++        run_compute(src, dst, patch2)
 +        ops = json.loads(patch2.read_text())
 +        assert ops == []
 +
@@ -387,7 +387,7 @@ index 0000000..68af6f3
 +        (dst / "link").symlink_to("real.txt")
 +
 +        patch = tmp_path / "patch.json"
-+        run_compute(dst, src, patch)
++        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
 +        assert (src / "link").is_symlink()
@@ -402,7 +402,7 @@ index 0000000..68af6f3
 +        (dst / "a.txt").write_text("world")
 +
 +        patch = tmp_path / "patch.json"
-+        run_compute(dst, src, patch)
++        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
 +        assert (src / "a.txt").exists()
