@@ -42,6 +42,8 @@ RUN cd /source && \
 # Pre-cache Rust dependencies by building a dummy project
 RUN cargo init /tmp/dep_cache && \
     cat >> /tmp/dep_cache/Cargo.toml << 'EOF'
+ENV CARGO_NET_OFFLINE=false
+[dependencies]
 walkdir = "2"
 sha2 = "0.10"
 serde = { version = "1.0", features = ["derive"] }
@@ -49,8 +51,11 @@ serde_json = "1.0"
 filetime = "0.2"
 hex = "0.4"
 anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
 EOF
-RUN cd /tmp/dep_cache && cargo fetch && cargo build --release || true
+RUN cd /tmp/dep_cache && cargo fetch && cargo test --no-run || true
 
 # Initialize /target as an empty git repo (required for test_patch.diff apply)
 RUN git init /target && \

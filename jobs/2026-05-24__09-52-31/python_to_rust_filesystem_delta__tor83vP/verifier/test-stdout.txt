@@ -1,0 +1,2 @@
+/tests/test.sh: line 1: /home/mwork/projects/micro1/python_to_rust_filesystem_delta/tests/test.sh: No such file or directory
+chmod: cannot access '/home/mwork/projects/micro1/python_to_rust_filesystem_delta/tests/test.sh': No such file or directory

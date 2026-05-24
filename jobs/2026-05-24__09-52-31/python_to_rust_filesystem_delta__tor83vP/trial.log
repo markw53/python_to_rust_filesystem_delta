@@ -1,0 +1,2 @@
+Skipping image OS validation for hb__sycamore-python_to_rust_filesystem_delta: docker inspect returned 1
+Trial python_to_rust_filesystem_delta__tor83vP failed: No reward file found at jobs/2026-05-24__09-52-31/python_to_rust_filesystem_delta__tor83vP/verifier/reward.txt or jobs/2026-05-24__09-52-31/python_to_rust_filesystem_delta__tor83vP/verifier/reward.json

@@ -1,4 +1,3 @@
-cat > /home/mwork/projects/micro1/python_to_rust_filesystem_delta/tests/test.sh << 'EOF'
 #!/bin/bash
 set -u
 mkdir -p /logs/verifier
@@ -29,6 +28,3 @@ if [ $? -eq 0 ]; then
 else
     echo 0 > /logs/verifier/reward.txt
 fi
-EOF
-
-chmod +x /home/mwork/projects/micro1/python_to_rust_filesystem_delta/tests/test.sh
