@@ -1,0 +1,80 @@
+Task: Python to Rust translation of a filesystem delta library
+
+## Why this migration is relevant
+
+Filesystem delta and patching tools are a core primitive in deployment systems,
+package managers, backup tools, and configuration management. Python is commonly
+used for prototyping these tools due to its rapid development cycle, but
+production systems frequently require Rust for performance, memory safety, and
+deployment as a single static binary. This task represents a realistic and
+common migration scenario.
+
+## What makes this technically challenging
+
+### Type system bridging
+Python uses dynamic typing throughout — optional fields are represented as None,
+enums are string-valued, and dataclasses carry no compile-time guarantees. The
+agent must introduce Rust's type system (enums, Option<T>, structs with derived
+traits) without losing the flexibility of the original code. In particular, the
+FileType enum, PatchOp struct, and SnapshotEntry struct require careful mapping
+from Python dataclasses to Rust structs with serde serialization.
+
+### Error handling paradigm
+The Python codebase uses exceptions (custom DeltaError subclasses) for error
+propagation. The agent must map these to Rust's Result<T, E> type, using
+anyhow or a custom error enum, while preserving the original propagation logic
+and ensuring errors are not swallowed.
+
+### Filesystem semantics
+The codebase deals extensively with symlinks, which require careful handling in
+Rust. The agent must use symlink_metadata instead of metadata throughout to
+avoid following symlinks, handle circular symlinks without panicking, and
+correctly detect and preserve symlink targets.
+
+### Deterministic ordering
+The Python implementation uses explicit sort functions (sort_deletes,
+sort_creates, sort_meta) to ensure patch operations are always emitted in a
+deterministic order. The agent must replicate this ordering logic in Rust,
+sorting deletions deepest-first and creations shallowest-first, even though
+Rust's HashMap iteration order is non-deterministic.
+
+### CLI surface preservation
+The Python CLI uses argparse with two subcommands (compute and apply) and
+specific flag names (--src, --dst, --out, --root, --patch, --dry-run). The
+agent must implement an equivalent CLI in Rust using clap or manual argument
+parsing, preserving all flag names and exit code semantics exactly.
+
+### Ecosystem idiom adaptation
+The agent must make idiomatic Rust choices for dependency selection: sha2 + hex
+for hashing (replacing Python's hashlib), serde + serde_json for serialization
+(replacing Python's json module), filetime for mtime manipulation, and tempfile
+for testing. These are not direct translations — the agent must understand both
+ecosystems to make correct substitution choices.
+
+## Why this task is useful for evaluating agents
+
+This task requires the agent to:
+1. Understand and translate non-trivial filesystem logic including symlink loops
+2. Map Python's dynamic type system to Rust's static type system correctly
+3. Preserve deterministic ordering semantics that are easy to miss
+4. Build a working CLI binary, not just a library
+5. Write a Cargo.toml with correct dependency versions and crate structure
+
+A partial translation that compiles but misses edge cases (symlink loops,
+ordering, modify_file truncation semantics) will fail the hidden test suite.
+This makes the task effective at distinguishing agents that truly understand
+both ecosystems from those that produce superficially correct but behaviorally
+divergent translations.
+
+## Difficulty classification
+
+Hard — the task involves an asymmetric language pair (dynamic to static types),
+deep filesystem semantics, CLI surface preservation, and deterministic ordering
+requirements that are non-obvious from a naive reading of the source code.
+
+## Dominant challenge category
+
+Type System Bridging + Ecosystem Idiom Adaptation — the primary technical
+hurdle is correctly mapping Python's dynamic types and exception-based error
+handling to Rust's static type system and Result-based error propagation, while
+also selecting and using the correct Rust ecosystem libraries.
