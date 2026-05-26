@@ -1,17 +1,25 @@
 #!/bin/bash
 set -u
+export PATH="/usr/local/cargo/bin:${PATH}"
+export RUSTUP_HOME="/usr/local/rustup"
+export CARGO_HOME="/usr/local/cargo"
 mkdir -p /logs/verifier
 
 # Apply hidden behavioral tests
 cd /target
 git apply /tests/test_patch.diff
+if [ $? -ne 0 ]; then
+    echo "Failed to apply test patch" >&2
+    echo 0 > /logs/verifier/reward.txt
+    exit 1
+fi
 
 # Build the binary
-cd /target
 cargo build --release
 if [ $? -ne 0 ]; then
+    echo "Build failed" >&2
     echo 0 > /logs/verifier/reward.txt
-    exit 0
+    exit 1
 fi
 
 cp target/release/filesystem-delta /target/filesystem-delta
@@ -25,6 +33,8 @@ FILESYSTEM_DELTA_BIN=/target/filesystem-delta \
 
 if [ $? -eq 0 ]; then
     echo 1 > /logs/verifier/reward.txt
+    exit 0
 else
     echo 0 > /logs/verifier/reward.txt
+    exit 1
 fi
