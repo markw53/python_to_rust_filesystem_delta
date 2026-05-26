@@ -3,7 +3,7 @@
   "pipeline": "sycamore",
   "task_type": "repository_translation",
   "repo": {
-    "image_name": "markw56/sycamore-filesystem-delta:python-to-rust-v12",
+    "image_name": "markw56/sycamore-filesystem-delta:python-to-rust-v13",
     "repo_dir": "/source"
   },
   "target": {
