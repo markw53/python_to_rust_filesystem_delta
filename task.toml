@@ -41,6 +41,7 @@ storage_mb = 20480
 gpus = 0
 allow_internet = false
 mcp_servers = []
+image = "markw56/sycamore-filesystem-delta:python-to-rust-v14"
 
 [environment.env]
 
