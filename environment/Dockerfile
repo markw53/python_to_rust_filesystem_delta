@@ -1,5 +1,9 @@
 FROM rust:1.85-slim-bookworm
 
+ENV RUSTUP_HOME="/usr/local/rustup"
+ENV CARGO_HOME="/usr/local/cargo"
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     python3 \
@@ -7,6 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Symlink cargo to /usr/local/bin so it's always in PATH
+RUN ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo && \
+    ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc
 
 # Git config for commits
 RUN git config --global user.email "test@test.com" && \
@@ -39,24 +47,6 @@ RUN cd /source && \
     git reflog expire --expire=now --all && \
     git gc --prune=now --aggressive
 
-# Pre-cache Rust dependencies by building a dummy project
-RUN cargo init /tmp/dep_cache && \
-    cat >> /tmp/dep_cache/Cargo.toml << 'EOF'
-ENV CARGO_NET_OFFLINE=false
-[dependencies]
-walkdir = "2"
-sha2 = "0.10"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-filetime = "0.2"
-hex = "0.4"
-anyhow = "1.0"
-
-[dev-dependencies]
-tempfile = "3"
-EOF
-RUN cd /tmp/dep_cache && cargo fetch && cargo test --no-run || true
-
 # Initialize /target as an empty git repo (required for test_patch.diff apply)
 RUN git init /target && \
     cd /target && \
@@ -68,6 +58,14 @@ RUN mkdir -p /source /target && chown -R user:user /source /target
 
 # Give user access to cargo registry cache
 RUN chown -R user:user /usr/local/cargo || true
+
+# Set rustup default toolchain accessible to all users
+RUN rustup default stable && \
+    chmod -R a+r /usr/local/rustup && \
+    chmod -R a+rx /usr/local/rustup/toolchains
+
+# Create /solution directory
+RUN mkdir -p /solution && chown -R user:user /solution
 
 USER user
 WORKDIR /source
