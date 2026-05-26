@@ -1,11 +1,7 @@
 {
   "instance_id": "sycamore__python_to_rust_filesystem_delta",
-  "pipeline": "sycamore",
+  "pipeline": "RepoTranslate",
   "task_type": "repository_translation",
-  "repo": {
-    "image_name": "",
-    "repo_dir": "/source"
-  },
   "target": {
     "language": "rust",
     "repo_dir": "/target"
@@ -13,9 +9,9 @@
   "language_pair": "python_to_rust",
   "direction": "Python to Rust",
   "difficulty_band": "hard",
-  "title": "Translate Python filesystem delta library to Rust",
+  "title": "Translate filesystem-delta from Python to Rust",
   "build_cmd": "cd /target && cargo build --release && cp target/release/filesystem-delta /target/filesystem-delta",
-  "test_cmd": "cd /target && cargo build --release && cp target/release/filesystem-delta /target/filesystem-delta && FILESYSTEM_DELTA_BIN=/target/filesystem-delta python3 -m pytest /target/tests/test_behavioral.py --rootdir=/target/tests -v --tb=short --no-header -rA --color=no -p no:cacheprovider",
+  "test_cmd": "([ -x /target/filesystem-delta ] || (cd /target && cargo build --release && cp target/release/filesystem-delta /target/filesystem-delta)) && FILESYSTEM_DELTA_BIN=/target/filesystem-delta python3 -m pytest /target/tests/test_behavioral.py --rootdir=/target/tests -v --tb=short --no-header -rA --color=no -p no:cacheprovider",
   "log_parser": "parse_log_pytest",
   "FAIL_TO_PASS": [
     "test_behavioral.py::TestComputeSubcommand::test_compute_creates_patch_file",
@@ -49,5 +45,6 @@
     "test_behavioral.py::TestRoundtrip::test_roundtrip_modify"
   ],
   "PASS_TO_PASS": [],
+  "expected_test_count": 29,
   "golden_repo": "solution/golden_repo.tar.gz"
 }
