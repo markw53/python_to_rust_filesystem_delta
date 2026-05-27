@@ -57,6 +57,18 @@ fi
 cp "$RESULTS_JSON" /logs/verifier/output.json
 
 # Score against FAIL_TO_PASS
+RESULTS_JSON=$(mktemp /tmp/sycamore-results.XXXXXX.json)
+python3 /tests/log_parsers.py "$PYTEST_LOG" /dev/null "$RESULTS_JSON" /tests/config.json
+
+if [ ! -f "$RESULTS_JSON" ]; then
+    echo "ERROR: parser did not produce output" >&2
+    echo 0 > /logs/verifier/reward.txt
+    echo '{"reward": 0}' > /logs/verifier/reward.json
+    exit 1
+fi
+
+cp "$RESULTS_JSON" /logs/verifier/output.json
+
 python3 - "$RESULTS_JSON" <<'PY_SCORE'
 import json
 import sys
@@ -92,23 +104,11 @@ missing_fail = [name for name in fail_to_pass if not _matches(name, passed)]
 missing_pass = [name for name in pass_to_pass if not _matches(name, passed)]
 success = not missing_fail and not missing_pass
 
-payload = {
-    "fail_to_pass": {
-        "total": len(fail_to_pass),
-        "passed": len(fail_to_pass) - len(missing_fail),
-        "missing": sorted(missing_fail),
-    },
-    "pass_to_pass": {
-        "total": len(pass_to_pass),
-        "passed": len(pass_to_pass) - len(missing_pass),
-        "missing": sorted(missing_pass),
-    },
-    "score": 1.0 if success else 0.0,
-    "resolved": success,
-}
+score = 1.0 if success else 0.0
 
+# Write reward.json in Harbor-compatible format
 with open("/logs/verifier/reward.json", "w", encoding="utf-8") as f:
-    json.dump(payload, f, indent=2)
+    json.dump({"reward": score}, f)
 
 print("Required tests:", len(fail_to_pass) + len(pass_to_pass))
 print("Passed required tests:", len(fail_to_pass) + len(pass_to_pass) - len(missing_fail) - len(missing_pass))
