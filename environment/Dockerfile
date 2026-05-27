@@ -2,6 +2,8 @@ FROM rust:1.85-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/usr/local/cargo/bin:${PATH}"
+ENV CARGO_NET_OFFLINE=true
+ENV RUSTUP_TOOLCHAIN=stable
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -18,6 +20,15 @@ RUN apt-get update \
 RUN python3 -m venv /opt/task-venv \
     && /opt/task-venv/bin/pip install --upgrade pip \
     && /opt/task-venv/bin/pip install --no-cache-dir pytest
+
+# Pre-cache cargo registry for offline builds
+RUN mkdir -p /tmp/cache_project/src && \
+    echo 'fn main() {}' > /tmp/cache_project/src/main.rs && \
+    printf '[package]\nname = "cache"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nwalkdir = "2"\nsha2 = "0.10"\nserde = { version = "1.0", features = ["derive"] }\nserde_json = "1.0"\nfiletime = "0.2"\nhex = "0.4"\nanyhow = "1.0"\n\n[dev-dependencies]\ntempfile = "3"\n' > /tmp/cache_project/Cargo.toml && \
+    cd /tmp/cache_project && \
+    cargo fetch && \
+    cargo build --release 2>/dev/null || true && \
+    rm -rf /tmp/cache_project
 
 COPY source_code/ /source/
 
