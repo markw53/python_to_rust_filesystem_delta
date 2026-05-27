@@ -1,6 +1,6 @@
 #!/bin/bash
 set -u
-export PATH="/usr/local/cargo/bin:${PATH}"
+export PATH="/usr/local/cargo/bin:/opt/task-venv/bin:${PATH}"
 export RUSTUP_HOME="/usr/local/rustup"
 export CARGO_HOME="/usr/local/cargo"
 mkdir -p /logs/verifier
@@ -26,7 +26,7 @@ cp target/release/filesystem-delta /target/filesystem-delta
 
 # Run behavioral tests
 FILESYSTEM_DELTA_BIN=/target/filesystem-delta \
-    python3 -m pytest /target/tests/test_behavioral.py \
+    /opt/task-venv/bin/python3 -m pytest /target/tests/test_behavioral.py \
     --rootdir=/target/tests \
     -v --tb=short --no-header -rA --color=no -p no:cacheprovider \
     > /logs/verifier/pytest_output.txt 2>&1
