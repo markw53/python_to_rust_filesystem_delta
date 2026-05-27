@@ -1,9 +1,9 @@
 diff --git a/tests/test_behavioral.py b/tests/test_behavioral.py
 new file mode 100644
-index 0000000..bb098b5
+index 0000000..3935439
 --- /dev/null
 +++ b/tests/test_behavioral.py
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,411 @@
 +import os
 +import json
 +import subprocess
@@ -291,7 +291,9 @@ index 0000000..bb098b5
 +        root = tmp_path / "root"
 +        root.mkdir()
 +        patch = tmp_path / "patch.json"
-+        patch.write_text(json.dumps([{"op": "symlink", "path": "link", "target": "real.txt"}]))
++        patch.write_text(
++            json.dumps([{"op": "symlink", "path": "link", "target": "real.txt"}])
++        )
 +
 +        result = run_apply(root, patch)
 +        assert result.returncode == 0
@@ -322,10 +324,14 @@ index 0000000..bb098b5
 +        root = tmp_path / "root"
 +        root.mkdir()
 +        patch = tmp_path / "patch.json"
-+        patch.write_text(json.dumps([
-+            {"op": "symlink", "path": "a", "target": "b"},
-+            {"op": "symlink", "path": "b", "target": "a"},
-+        ]))
++        patch.write_text(
++            json.dumps(
++                [
++                    {"op": "symlink", "path": "a", "target": "b"},
++                    {"op": "symlink", "path": "b", "target": "a"},
++                ]
++            )
++        )
 +
 +        result = run_apply(root, patch)
 +        assert result.returncode == 0
@@ -373,6 +379,8 @@ index 0000000..bb098b5
 +        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
++        # Second compute should produce empty patch
++        # since src now matches dst
 +        patch2 = tmp_path / "patch2.json"
 +        run_compute(src, dst, patch2)
 +        ops = json.loads(patch2.read_text())
