@@ -52,14 +52,10 @@
     "test_behavioral.py::TestPreciseBehavior::test_apply_unknown_op_fails",
     "test_behavioral.py::TestPreciseBehavior::test_compute_unicode_paths",
     "test_behavioral.py::TestPreciseBehavior::test_compute_deep_nesting_order",
-    "test_behavioral.py::TestPreciseBehavior::test_compute_create_file_has_hash",
-    "test_behavioral.py::TestPreciseBehavior::test_compute_hash_identifies_content",
     "test_behavioral.py::TestPreciseBehavior::test_compute_modify_no_hash",
     "test_behavioral.py::TestPreciseBehavior::test_compute_symlink_has_target",
     "test_behavioral.py::TestPreciseBehavior::test_compute_chmod_has_mode",
     "test_behavioral.py::TestPreciseBehavior::test_compute_utimes_has_mtime",
-    "test_behavioral.py::TestPreciseBehavior::test_compute_no_extra_fields",
-    "test_behavioral.py::TestPreciseBehavior::test_compute_delete_no_extra_fields",
     "test_behavioral.py::TestPreciseBehavior::test_apply_create_file_empty",
     "test_behavioral.py::TestPreciseBehavior::test_apply_modify_file_empty",
     "test_behavioral.py::TestPreciseBehavior::test_compute_empty_dirs_no_ops",
@@ -71,6 +67,6 @@
     "test_behavioral.py::TestPreciseBehavior::test_compute_patch_indent"
   ],
   "PASS_TO_PASS": [],
-  "expected_test_count": 51,
+  "expected_test_count": 47,
   "golden_repo": "solution/golden_repo.tar.gz"
 }

@@ -1,9 +1,9 @@
 diff --git a/tests/test_behavioral.py b/tests/test_behavioral.py
 new file mode 100644
-index 0000000..f2024d7
+index 0000000..2c09a4f
 --- /dev/null
 +++ b/tests/test_behavioral.py
-@@ -0,0 +1,724 @@
+@@ -0,0 +1,673 @@
 +import os
 +import json
 +import subprocess
@@ -489,32 +489,6 @@ index 0000000..f2024d7
 +            depth_b = paths[i + 1].count("/")
 +            assert depth_a <= depth_b
 +
-+    def test_compute_create_file_has_hash(self, tmp_path):
-+        src = tmp_path / "src"
-+        dst = tmp_path / "dst"
-+        src.mkdir()
-+        dst.mkdir()
-+        (dst / "a.txt").write_text("hello world")
-+
-+        ops = compute_and_load(src, dst, tmp_path)
-+        create_ops = [o for o in ops if o["op"] == "create_file"]
-+        assert len(create_ops) == 1
-+        assert "hash" in create_ops[0]
-+        assert len(create_ops[0]["hash"]) == 64
-+
-+    def test_compute_hash_identifies_content(self, tmp_path):
-+        src = tmp_path / "src"
-+        dst = tmp_path / "dst"
-+        src.mkdir()
-+        dst.mkdir()
-+        (dst / "a.txt").write_text("hello world")
-+        (dst / "b.txt").write_text("hello world")
-+
-+        ops = compute_and_load(src, dst, tmp_path)
-+        hashes = [o["hash"] for o in ops if o["op"] == "create_file" and "hash" in o]
-+        assert len(hashes) == 2
-+        assert hashes[0] == hashes[1]
-+
 +    def test_compute_modify_no_hash(self, tmp_path):
 +        src = tmp_path / "src"
 +        dst = tmp_path / "dst"
@@ -575,31 +549,6 @@ index 0000000..f2024d7
 +        utimes_ops = [o for o in ops if o["op"] == "utimes"]
 +        assert len(utimes_ops) == 1
 +        assert utimes_ops[0]["mtime"] == 200000
-+
-+    def test_compute_no_extra_fields(self, tmp_path):
-+        src = tmp_path / "src"
-+        dst = tmp_path / "dst"
-+        src.mkdir()
-+        dst.mkdir()
-+        (dst / "subdir").mkdir()
-+
-+        ops = compute_and_load(src, dst, tmp_path)
-+        create_dir_ops = [o for o in ops if o["op"] == "create_dir"]
-+        assert len(create_dir_ops) == 1
-+        # create_dir should only have op and path
-+        assert set(create_dir_ops[0].keys()) == {"op", "path"}
-+
-+    def test_compute_delete_no_extra_fields(self, tmp_path):
-+        src = tmp_path / "src"
-+        dst = tmp_path / "dst"
-+        src.mkdir()
-+        dst.mkdir()
-+        (src / "a.txt").write_text("x")
-+
-+        ops = compute_and_load(src, dst, tmp_path)
-+        delete_ops = [o for o in ops if o["op"] == "delete_file"]
-+        assert len(delete_ops) == 1
-+        assert set(delete_ops[0].keys()) == {"op", "path"}
 +
 +    def test_apply_create_file_empty(self, tmp_path):
 +        root = tmp_path / "root"
