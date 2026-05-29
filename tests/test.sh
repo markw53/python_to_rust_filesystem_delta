@@ -103,12 +103,32 @@ passed = {item.get("name", "") for item in results.get("tests", []) if item.get(
 missing_fail = [name for name in fail_to_pass if not _matches(name, passed)]
 missing_pass = [name for name in pass_to_pass if not _matches(name, passed)]
 success = not missing_fail and not missing_pass
-
 score = 1.0 if success else 0.0
 
-# Write reward.json in Harbor-compatible format
+# Write minimal numeric reward.json for Harbor
 with open("/logs/verifier/reward.json", "w", encoding="utf-8") as f:
-    json.dump({"reward": score}, f)
+    json.dump({
+        "score": score,
+        "resolved": success,
+        "fail_to_pass": score,
+        "pass_to_pass": 1.0 if not missing_pass else 0.0,
+    }, f)
+
+# Write detailed info separately for debugging
+details = {
+    "fail_to_pass_detail": {
+        "total": len(fail_to_pass),
+        "passed": len(fail_to_pass) - len(missing_fail),
+        "missing": sorted(missing_fail),
+    },
+    "pass_to_pass_detail": {
+        "total": len(pass_to_pass),
+        "passed": len(pass_to_pass) - len(missing_pass),
+        "missing": sorted(missing_pass),
+    },
+}
+with open("/logs/verifier/reward-details.json", "w", encoding="utf-8") as f:
+    json.dump(details, f, indent=2)
 
 print("Required tests:", len(fail_to_pass) + len(pass_to_pass))
 print("Passed required tests:", len(fail_to_pass) + len(pass_to_pass) - len(missing_fail) - len(missing_pass))
