@@ -1,7 +1,7 @@
 schema_version = "1.1"
 
 [task]
-name = "sycamore/python_to_rust_filesystem_delta"
+name = "sycamore/python_to_rust_fs_delta_v2"
 description = "Translate a Python filesystem delta library into idiomatic Rust, preserving CLI behavior and patch operation semantics."
 authors = [{ name = "Mark Workman", email = "mw476@expert.micro1.ai" }]
 keywords = [
@@ -15,7 +15,7 @@ keywords = [
 [metadata]
 source = "m1-rl-envs"
 environment_id = "sycamore"
-instance_id = "sycamore__python_to_rust_filesystem_delta"
+instance_id = "sycamore__python_to_rust_fs_delta_v2"
 pipeline = "sycamore"
 task_type = "repository_translation"
 language_pair = "python_to_rust"

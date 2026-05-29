@@ -1,5 +1,5 @@
 {
-  "instance_id": "sycamore__python_to_rust_filesystem_delta",
+  "instance_id": "sycamore__python_to_rust_fs_delta_v2",
   "pipeline": "sycamore",
   "task_type": "repository_translation",
   "repo": {
