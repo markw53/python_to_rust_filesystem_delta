@@ -1,9 +1,9 @@
 diff --git a/tests/test_behavioral.py b/tests/test_behavioral.py
 new file mode 100644
-index 0000000..3935439
+index 0000000..9df5bd9
 --- /dev/null
 +++ b/tests/test_behavioral.py
-@@ -0,0 +1,411 @@
+@@ -0,0 +1,410 @@
 +import os
 +import json
 +import subprocess
@@ -373,14 +373,13 @@ index 0000000..3935439
 +        dst = tmp_path / "dst"
 +        src.mkdir()
 +        dst.mkdir()
-+        (dst / "a.txt").write_text("hello")
++        (dst / "subdir").mkdir()
 +
 +        patch = tmp_path / "patch.json"
 +        run_compute(src, dst, patch)
 +        run_apply(src, patch)
 +
 +        # Second compute should produce empty patch
-+        # since src now matches dst
 +        patch2 = tmp_path / "patch2.json"
 +        run_compute(src, dst, patch2)
 +        ops = json.loads(patch2.read_text())
