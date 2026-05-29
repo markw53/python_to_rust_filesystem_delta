@@ -3,7 +3,7 @@
   "pipeline": "sycamore",
   "task_type": "repository_translation",
   "repo": {
-    "image_name": "micro1ai/sycamore-filesystem-delta:python-to-rust-v14",
+    "image_name": "",
     "repo_dir": "/source"
   },
   "target": {
