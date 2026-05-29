@@ -1,9 +1,9 @@
 diff --git a/tests/test_behavioral.py b/tests/test_behavioral.py
 new file mode 100644
-index 0000000..9df5bd9
+index 0000000..f2024d7
 --- /dev/null
 +++ b/tests/test_behavioral.py
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,724 @@
 +import os
 +import json
 +import subprocess
@@ -414,3 +414,317 @@ index 0000000..9df5bd9
 +
 +        assert (src / "a.txt").exists()
 +        assert (src / "a.txt").read_text() == ""
++
++
++class TestPreciseBehavior:
++    def test_compute_json_field_order(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a.txt").write_text("hello")
++        (dst / "a.txt").write_text("world")
++        os.chmod(src / "a.txt", 0o644)
++        os.chmod(dst / "a.txt", 0o600)
++
++        patch = tmp_path / "patch.json"
++        result = run_compute(src, dst, patch)
++        assert result.returncode == 0
++
++        raw = patch.read_text()
++        ops = json.loads(raw)
++        for op in ops:
++            keys = list(op.keys())
++            assert keys[0] == "op"
++            assert keys[1] == "path"
++
++    def test_apply_dry_run_output_format(self, tmp_path):
++        root = tmp_path / "root"
++        root.mkdir()
++        (root / "a.txt").write_text("hello")
++        patch = tmp_path / "patch.json"
++        patch.write_text(json.dumps([{"op": "modify_file", "path": "a.txt"}]))
++
++        result = run_apply(root, patch, dry_run=True)
++        assert result.returncode == 0
++        assert "modify_file" in result.stdout
++        assert "a.txt" in result.stdout
++
++    def test_apply_unknown_op_fails(self, tmp_path):
++        root = tmp_path / "root"
++        root.mkdir()
++        patch = tmp_path / "patch.json"
++        patch.write_text(json.dumps([{"op": "unknown_op", "path": "a.txt"}]))
++
++        result = run_apply(root, patch)
++        assert result.returncode != 0
++
++    def test_compute_unicode_paths(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "файл.txt").write_text("hello")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        assert any(o["op"] == "create_file" and o["path"] == "файл.txt" for o in ops)
++
++    def test_compute_deep_nesting_order(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++
++        base = dst
++        for i in range(5):
++            base = base / f"d{i}"
++            base.mkdir()
++        (base / "leaf.txt").write_text("x")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        paths = [o["path"] for o in ops]
++
++        for i in range(len(paths) - 1):
++            depth_a = paths[i].count("/")
++            depth_b = paths[i + 1].count("/")
++            assert depth_a <= depth_b
++
++    def test_compute_create_file_has_hash(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "a.txt").write_text("hello world")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        create_ops = [o for o in ops if o["op"] == "create_file"]
++        assert len(create_ops) == 1
++        assert "hash" in create_ops[0]
++        assert len(create_ops[0]["hash"]) == 64
++
++    def test_compute_hash_identifies_content(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "a.txt").write_text("hello world")
++        (dst / "b.txt").write_text("hello world")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        hashes = [o["hash"] for o in ops if o["op"] == "create_file" and "hash" in o]
++        assert len(hashes) == 2
++        assert hashes[0] == hashes[1]
++
++    def test_compute_modify_no_hash(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a.txt").write_text("hello")
++        (dst / "a.txt").write_text("world")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        modify_ops = [o for o in ops if o["op"] == "modify_file"]
++        assert len(modify_ops) == 1
++        assert "hash" not in modify_ops[0]
++
++    def test_compute_symlink_has_target(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "real.txt").write_text("x")
++        (dst / "link").symlink_to("real.txt")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        symlink_ops = [o for o in ops if o["op"] == "symlink"]
++        assert len(symlink_ops) == 1
++        assert symlink_ops[0]["target"] == "real.txt"
++        assert "hash" not in symlink_ops[0]
++
++    def test_compute_chmod_has_mode(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a.txt").write_text("x")
++        (dst / "a.txt").write_text("x")
++        os.chmod(src / "a.txt", 0o644)
++        os.chmod(dst / "a.txt", 0o600)
++        os.utime(src / "a.txt", (100000, 100000))
++        os.utime(dst / "a.txt", (100000, 100000))
++
++        ops = compute_and_load(src, dst, tmp_path)
++        chmod_ops = [o for o in ops if o["op"] == "chmod"]
++        assert len(chmod_ops) == 1
++        assert chmod_ops[0]["mode"] == 0o100600
++
++    def test_compute_utimes_has_mtime(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a.txt").write_text("x")
++        (dst / "a.txt").write_text("x")
++        os.utime(src / "a.txt", (100000, 100000))
++        os.utime(dst / "a.txt", (200000, 200000))
++        os.chmod(src / "a.txt", 0o644)
++        os.chmod(dst / "a.txt", 0o644)
++
++        ops = compute_and_load(src, dst, tmp_path)
++        utimes_ops = [o for o in ops if o["op"] == "utimes"]
++        assert len(utimes_ops) == 1
++        assert utimes_ops[0]["mtime"] == 200000
++
++    def test_compute_no_extra_fields(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "subdir").mkdir()
++
++        ops = compute_and_load(src, dst, tmp_path)
++        create_dir_ops = [o for o in ops if o["op"] == "create_dir"]
++        assert len(create_dir_ops) == 1
++        # create_dir should only have op and path
++        assert set(create_dir_ops[0].keys()) == {"op", "path"}
++
++    def test_compute_delete_no_extra_fields(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a.txt").write_text("x")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        delete_ops = [o for o in ops if o["op"] == "delete_file"]
++        assert len(delete_ops) == 1
++        assert set(delete_ops[0].keys()) == {"op", "path"}
++
++    def test_apply_create_file_empty(self, tmp_path):
++        root = tmp_path / "root"
++        root.mkdir()
++        patch = tmp_path / "patch.json"
++        patch.write_text(json.dumps([{"op": "create_file", "path": "a.txt"}]))
++
++        result = run_apply(root, patch)
++        assert result.returncode == 0
++        assert (root / "a.txt").read_bytes() == b""
++
++    def test_apply_modify_file_empty(self, tmp_path):
++        root = tmp_path / "root"
++        root.mkdir()
++        (root / "a.txt").write_bytes(b"some content here")
++        patch = tmp_path / "patch.json"
++        patch.write_text(json.dumps([{"op": "modify_file", "path": "a.txt"}]))
++
++        result = run_apply(root, patch)
++        assert result.returncode == 0
++        assert (root / "a.txt").read_bytes() == b""
++
++    def test_compute_empty_dirs_no_ops(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++
++        ops = compute_and_load(src, dst, tmp_path)
++        assert ops == []
++
++    def test_compute_identical_trees_no_ops(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a.txt").write_text("hello")
++        (dst / "a.txt").write_text("hello")
++        os.utime(src / "a.txt", (100000, 100000))
++        os.utime(dst / "a.txt", (100000, 100000))
++        os.chmod(src / "a.txt", 0o644)
++        os.chmod(dst / "a.txt", 0o644)
++
++        ops = compute_and_load(src, dst, tmp_path)
++        assert ops == []
++
++    def test_compute_meta_ops_sorted(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++
++        for name in ["z.txt", "a.txt", "m.txt"]:
++            (src / name).write_text("x")
++            (dst / name).write_text("x")
++            os.chmod(src / name, 0o644)
++            os.chmod(dst / name, 0o600)
++            os.utime(src / name, (100000, 100000))
++            os.utime(dst / name, (100000, 100000))
++
++        ops = compute_and_load(src, dst, tmp_path)
++        chmod_ops = [o for o in ops if o["op"] == "chmod"]
++        paths = [o["path"] for o in chmod_ops]
++        assert paths == sorted(paths)
++
++    def test_apply_nested_create_parents(self, tmp_path):
++        root = tmp_path / "root"
++        root.mkdir()
++        patch = tmp_path / "patch.json"
++        patch.write_text(
++            json.dumps(
++                [
++                    {"op": "create_dir", "path": "a"},
++                    {"op": "create_dir", "path": "a/b"},
++                    {"op": "create_file", "path": "a/b/c.txt"},
++                ]
++            )
++        )
++
++        result = run_apply(root, patch)
++        assert result.returncode == 0
++        assert (root / "a" / "b" / "c.txt").exists()
++
++    def test_compute_broken_symlink(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "broken").symlink_to("nonexistent_target")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        assert any(
++            o["op"] == "symlink"
++            and o["path"] == "broken"
++            and o.get("target") == "nonexistent_target"
++            for o in ops
++        )
++
++    def test_compute_patch_is_json_array(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++
++        patch = tmp_path / "patch.json"
++        result = run_compute(src, dst, patch)
++        assert result.returncode == 0
++
++        raw = patch.read_text()
++        parsed = json.loads(raw)
++        assert isinstance(parsed, list)
++
++    def test_compute_patch_indent(self, tmp_path):
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "a.txt").write_text("hello")
++
++        patch = tmp_path / "patch.json"
++        result = run_compute(src, dst, patch)
++        assert result.returncode == 0
++
++        raw = patch.read_text()
++        # Python uses indent=2 — check for 2-space indentation
++        assert "  " in raw
++        lines = raw.splitlines()
++        assert any(line.startswith("  ") for line in lines)
