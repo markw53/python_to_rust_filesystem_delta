@@ -64,9 +64,14 @@
     "test_behavioral.py::TestPreciseBehavior::test_apply_nested_create_parents",
     "test_behavioral.py::TestPreciseBehavior::test_compute_broken_symlink",
     "test_behavioral.py::TestPreciseBehavior::test_compute_patch_is_json_array",
-    "test_behavioral.py::TestPreciseBehavior::test_compute_patch_indent"
+    "test_behavioral.py::TestPreciseBehavior::test_compute_patch_indent",
+    "test_behavioral.py::TestSymlinkEdgeCases::test_dangling_symlink_to_path_with_slash",
+    "test_behavioral.py::TestSymlinkEdgeCases::test_symlink_to_dir_not_recursed",
+    "test_behavioral.py::TestSymlinkEdgeCases::test_circular_symlink_no_hang",
+    "test_behavioral.py::TestSymlinkEdgeCases::test_apply_symlink_loop_then_compute",
+    "test_behavioral.py::TestSymlinkEdgeCases::test_symlink_to_dir_then_delete"
   ],
   "PASS_TO_PASS": [],
-  "expected_test_count": 47,
+  "expected_test_count": 52,
   "golden_repo": "solution/golden_repo.tar.gz"
 }

@@ -1,9 +1,9 @@
 diff --git a/tests/test_behavioral.py b/tests/test_behavioral.py
 new file mode 100644
-index 0000000..2c09a4f
+index 0000000..2d92156
 --- /dev/null
 +++ b/tests/test_behavioral.py
-@@ -0,0 +1,673 @@
+@@ -0,0 +1,773 @@
 +import os
 +import json
 +import subprocess
@@ -677,3 +677,103 @@ index 0000000..2c09a4f
 +        assert "  " in raw
 +        lines = raw.splitlines()
 +        assert any(line.startswith("  ") for line in lines)
++
++class TestSymlinkEdgeCases:
++    def test_dangling_symlink_to_path_with_slash(self, tmp_path):
++        # A broken symlink whose target looks like a directory path.
++        # Naive walk using is_dir() (which follows symlinks) returns False
++        # for a broken link and silently drops it.
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (dst / "broken").symlink_to("does/not/exist")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        assert any(
++            o["op"] == "symlink" and o["path"] == "broken"
++            and o.get("target") == "does/not/exist"
++            for o in ops
++        )
++
++    def test_symlink_to_dir_not_recursed(self, tmp_path):
++        # A symlink pointing at a real directory must be recorded as a
++        # symlink, NOT recursed into. Naive is_dir() follows it and would
++        # emit the target dir's contents under the link path.
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        realdir = dst / "realdir"
++        realdir.mkdir()
++        (realdir / "inside.txt").write_text("x")
++        (dst / "link_to_dir").symlink_to("realdir")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        # link_to_dir must be a symlink op
++        assert any(
++            o["op"] == "symlink" and o["path"] == "link_to_dir"
++            for o in ops
++        )
++        # there must be NO ops under link_to_dir/ (it wasn't recursed)
++        assert not any(
++            o["path"].startswith("link_to_dir/") for o in ops
++        )
++
++    def test_circular_symlink_no_hang(self, tmp_path):
++        # Self-referential symlinks must not cause infinite recursion.
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "a").symlink_to("b")
++        (src / "b").symlink_to("a")
++        (dst / "x.txt").write_text("hello")
++
++        # If the implementation follows symlinks, this hangs and times out.
++        ops = compute_and_load(src, dst, tmp_path)
++        assert any(o["op"] == "create_file" and o["path"] == "x.txt" for o in ops)
++
++    def test_apply_symlink_loop_then_compute(self, tmp_path):
++        # Apply a circular symlink pair, then snapshot — must not hang or
++        # error with FilesystemLoop.
++        root = tmp_path / "root"
++        root.mkdir()
++        patch = tmp_path / "patch.json"
++        patch.write_text(json.dumps([
++            {"op": "symlink", "path": "a", "target": "b"},
++            {"op": "symlink", "path": "b", "target": "a"},
++        ]))
++        result = run_apply(root, patch)
++        assert result.returncode == 0
++
++        # Now compute against an empty dir — deletes both, must not hang
++        empty = tmp_path / "empty"
++        empty.mkdir()
++        patch2 = tmp_path / "patch2.json"
++        r2 = run_compute(root, empty, patch2)
++        assert r2.returncode == 0
++        ops = json.loads(patch2.read_text())
++        deleted = {o["path"] for o in ops if o["op"] == "delete_file"}
++        assert "a" in deleted and "b" in deleted
++
++    def test_symlink_to_dir_then_delete(self, tmp_path):
++        # symlink-to-dir in src, gone in dst -> must be delete_file
++        # (a symlink is deleted as a file, not delete_dir, even though it
++        # points at a directory).
++        src = tmp_path / "src"
++        dst = tmp_path / "dst"
++        src.mkdir()
++        dst.mkdir()
++        (src / "realdir").mkdir()
++        (src / "realdir" / "f.txt").write_text("x")
++        (src / "dirlink").symlink_to("realdir")
++
++        ops = compute_and_load(src, dst, tmp_path)
++        # dirlink must be deleted as a file (it's a symlink)
++        assert any(
++            o["op"] == "delete_file" and o["path"] == "dirlink"
++            for o in ops
++        )
++        # realdir and its file are deleted too
++        assert any(o["op"] == "delete_dir" and o["path"] == "realdir" for o in ops)
